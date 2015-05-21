@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx"
 )
 
-const Version = "0.0.2"
+const Version = "0.1.0"
 
 var options struct {
 	parallel int
