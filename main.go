@@ -16,6 +16,7 @@ const Version = "0.0.2"
 var options struct {
 	parallel int
 	repeat   int
+	echo     bool
 	version  bool
 }
 
@@ -32,6 +33,7 @@ func main() {
 
 	flag.IntVar(&options.parallel, "parallel", 2, "number of parallel connections")
 	flag.IntVar(&options.repeat, "repeat", 1, "number of times to run FILE")
+	flag.BoolVar(&options.echo, "echo", false, "echo processed SQL")
 	flag.BoolVar(&options.version, "version", false, "print version and exit")
 	flag.Parse()
 
@@ -116,6 +118,10 @@ func doJob(jobNumber int) {
 	if err != nil {
 		errChan <- err
 		return
+	}
+
+	if options.echo {
+		fmt.Println(buf.String())
 	}
 
 	_, err = connPool.Exec(buf.String())
