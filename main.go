@@ -17,6 +17,7 @@ var options struct {
 	parallel int
 	repeat   int
 	echo     bool
+	pretend  bool
 	version  bool
 }
 
@@ -34,6 +35,7 @@ func main() {
 	flag.IntVar(&options.parallel, "parallel", 2, "number of parallel connections")
 	flag.IntVar(&options.repeat, "repeat", 1, "number of times to run FILE")
 	flag.BoolVar(&options.echo, "echo", false, "echo processed SQL")
+	flag.BoolVar(&options.pretend, "pretend", false, "do not actually execute SQL")
 	flag.BoolVar(&options.version, "version", false, "print version and exit")
 	flag.Parse()
 
@@ -124,10 +126,12 @@ func doJob(jobNumber int) {
 		fmt.Println(buf.String())
 	}
 
-	_, err = connPool.Exec(buf.String())
-	if err != nil {
-		errChan <- err
-		return
+	if !options.pretend {
+		_, err = connPool.Exec(buf.String())
+		if err != nil {
+			errChan <- err
+			return
+		}
 	}
 
 	resultChan <- true
