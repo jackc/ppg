@@ -11,13 +11,18 @@ import (
 	"github.com/jackc/pgx"
 )
 
-const Version = "0.0.1"
+const Version = "0.0.2"
 
 var options struct {
 	parallel int
-	count    int
+	repeat   int
 	version  bool
 }
+
+var connPool *pgx.ConnPool
+var sqlTmpl *template.Template
+var errChan = make(chan error)
+var resultChan = make(chan bool)
 
 func main() {
 	flag.Usage = func() {
@@ -26,7 +31,7 @@ func main() {
 	}
 
 	flag.IntVar(&options.parallel, "parallel", 2, "number of parallel connections")
-	flag.IntVar(&options.count, "count", 1, "number of times to run FILE")
+	flag.IntVar(&options.repeat, "repeat", 1, "number of times to run FILE")
 	flag.BoolVar(&options.version, "version", false, "print version and exit")
 	flag.Parse()
 
@@ -40,19 +45,49 @@ func main() {
 		os.Exit(1)
 	}
 
-	sqlTmpl, err := template.ParseFiles(flag.Args()[0])
+	var err error
+	sqlTmpl, err = template.ParseFiles(flag.Args()[0])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
 	var connPoolConfig pgx.ConnPoolConfig
+	connPoolConfig, err = extractConnPoolConfig()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	connPool, err = pgx.NewConnPool(connPoolConfig)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Connection failed:", err)
+		os.Exit(1)
+	}
+
+	for i := 0; i < options.repeat; i++ {
+		go doJob(i)
+	}
+
+	for i := 0; i < options.repeat; i++ {
+		select {
+		case err := <-errChan:
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		case <-resultChan:
+		}
+	}
+
+	connPool.Close()
+}
+
+func extractConnPoolConfig() (pgx.ConnPoolConfig, error) {
+	var connPoolConfig pgx.ConnPoolConfig
 	connPoolConfig.Host = os.Getenv("PGHOST")
 	if os.Getenv("PGPORT") != "" {
 		n64, err := strconv.ParseUint(os.Getenv("PGPORT"), 10, 16)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Invalid port:", err)
-			os.Exit(1)
+			return connPoolConfig, fmt.Errorf("Invalid port: %v", err)
 		}
 
 		connPoolConfig.Port = uint16(n64)
@@ -63,51 +98,31 @@ func main() {
 
 	connPoolConfig.MaxConnections = options.parallel
 
-	connPool, err := pgx.NewConnPool(connPoolConfig)
+	return connPoolConfig, nil
+}
+
+func doJob(jobNumber int) {
+	var data struct {
+		Parallel  int
+		Repeat    int
+		JobNumber int
+	}
+	data.Parallel = options.parallel
+	data.Repeat = options.repeat
+	data.JobNumber = jobNumber
+
+	var buf bytes.Buffer
+	err := sqlTmpl.Execute(&buf, data)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Connection failed:", err)
-		os.Exit(1)
+		errChan <- err
+		return
 	}
 
-	errChan := make(chan error)
-	resultChan := make(chan bool)
-
-	for i := 0; i < options.count; i++ {
-		go func(i int) {
-			var data struct {
-				Parallel  int
-				Count     int
-				JobNumber int
-			}
-			data.Parallel = options.parallel
-			data.Count = options.count
-			data.JobNumber = i
-
-			var buf bytes.Buffer
-			err := sqlTmpl.Execute(&buf, data)
-			if err != nil {
-				errChan <- err
-				return
-			}
-
-			_, err = connPool.Exec(buf.String())
-			if err != nil {
-				errChan <- err
-				return
-			}
-
-			resultChan <- true
-		}(i)
+	_, err = connPool.Exec(buf.String())
+	if err != nil {
+		errChan <- err
+		return
 	}
 
-	for i := 0; i < options.count; i++ {
-		select {
-		case err := <-errChan:
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		case <-resultChan:
-		}
-	}
-
-	connPool.Close()
+	resultChan <- true
 }
