@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strconv"
 	"text/template"
 
 	"github.com/jackc/pgx"
@@ -87,22 +86,12 @@ func main() {
 
 func extractConnPoolConfig() (pgx.ConnPoolConfig, error) {
 	var connPoolConfig pgx.ConnPoolConfig
-	connPoolConfig.Host = os.Getenv("PGHOST")
-	if os.Getenv("PGPORT") != "" {
-		n64, err := strconv.ParseUint(os.Getenv("PGPORT"), 10, 16)
-		if err != nil {
-			return connPoolConfig, fmt.Errorf("Invalid port: %v", err)
-		}
+	var err error
 
-		connPoolConfig.Port = uint16(n64)
-	}
-	connPoolConfig.Database = os.Getenv("PGDATABASE")
-	connPoolConfig.User = os.Getenv("PGUSER")
-	connPoolConfig.Password = os.Getenv("PGPASSWORD")
-
+	connPoolConfig.ConnConfig, err = pgx.ParseEnvLibpq()
 	connPoolConfig.MaxConnections = options.parallel
 
-	return connPoolConfig, nil
+	return connPoolConfig, err
 }
 
 func doJob(jobNumber int) {
