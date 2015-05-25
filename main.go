@@ -31,7 +31,7 @@ func main() {
 		flag.PrintDefaults()
 	}
 
-	flag.IntVar(&options.parallel, "parallel", 2, "number of parallel connections")
+	flag.IntVar(&options.parallel, "parallel", 1, "number of parallel connections")
 	flag.IntVar(&options.repeat, "repeat", 1, "number of times to run FILE")
 	flag.BoolVar(&options.echo, "echo", false, "echo processed SQL")
 	flag.BoolVar(&options.pretend, "pretend", false, "do not actually execute SQL")
